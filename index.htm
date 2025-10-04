@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cantonese Ice Cream Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: none; /* Prevents scrolling on mobile when dragging */
+        }
+        .handwriting {
+            /* Now inherits sans-serif from the body */
+        }
+        .ice-cream-shop-bg {
+             background-color: #fdf2e9; /* Creamy wall color */
+        }
+        #game-container {
+            border: 12px solid #8d6e63; /* Wood-like frame for the shop window */
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2), inset 0 0 15px rgba(0,0,0,0.3);
+        }
+        .dragging {
+            opacity: 0.5;
+            transform: scale(1.1);
+        }
+        .drag-over {
+            transform: scale(1.05);
+            border-color: #4ade80; /* green-400 */
+        }
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .pop-animation {
+            animation: pop 0.3s ease-out;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .shake-animation {
+            animation: shake 0.3s ease-in-out;
+        }
+        .customer-enter {
+            animation: slideIn 0.5s forwards;
+        }
+        .customer-leave {
+            animation: slideOut 0.5s forwards;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        .cone-waffle {
+            background-color: #d2a679; /* Waffle cone color */
+            background-image: 
+                linear-gradient(45deg, rgba(0,0,0,0.15) 25%, transparent 25%), 
+                linear-gradient(-45deg, rgba(0,0,0,0.15) 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.15) 75%), 
+                linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.15) 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            clip-path: polygon(15% 0, 85% 0, 50% 100%);
+            position: relative;
+            top: -5px; /* Overlap with scoop */
+            z-index: -10;
+        }
+    </style>
+</head>
+<body class="bg-pink-100 flex items-center justify-center min-h-screen p-4 overflow-hidden ice-cream-shop-bg">
+    <div id="game-container" class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="p-8 text-center">
+            <h1 class="text-4xl md:text-6xl font-bold text-pink-500 handwriting">雪糕挑戰</h1>
+            <p class="mt-4 text-gray-600 text-lg">選擇一個難度開始！</p>
+            <div class="mt-8 flex flex-col md:flex-row justify-center gap-4">
+                <button onclick="startGame(45)" class="bg-green-400 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform transform hover:scale-105">簡單</button>
+                <button onclick="startGame(30)" class="bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform transform hover:scale-105">正常</button>
+                <button onclick="startGame(20)" class="bg-red-400 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform transform hover:scale-105">困難</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="hidden">
+            <header class="bg-pink-400 p-4 flex justify-between items-center text-white">
+                <div class="text-lg md:text-2xl font-bold">收入: $<span id="score">0</span></div>
+                <div class="text-lg md:text-2xl font-bold">時間: <span id="timer">30</span>s</div>
+            </header>
+            <main class="p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 relative bg-[#f4e9e1] border-t-8 border-b-8 border-[#c5a99a]">
+                <!-- Customer Area -->
+                <div id="customer-area" class="md:col-span-1 flex flex-col items-center justify-center bg-blue-100 rounded-xl p-4 min-h-[150px] md:min-h-full">
+                     <div id="customer-message" class="text-center text-gray-500 mb-2">請將含有 /-p/ 尾音嘅雪糕俾客人！</div>
+                     <div id="customer" class="text-6xl md:text-8xl transition-transform duration-300 border-4 border-dashed border-blue-300 rounded-full p-4">
+                        <span>🙂</span>
+                    </div>
+                </div>
+
+                <!-- Ice Cream Truck Area -->
+                <div class="md:col-span-2 bg-pink-200/50 rounded-xl shadow-inner p-4 border-2 border-pink-300">
+                     <div class="text-center mb-4">
+                        <h3 class="text-2xl font-bold text-pink-600 handwriting">雪糕櫃</h3>
+                    </div>
+                    <div id="ice-cream-options" class="grid grid-cols-2 sm:grid-cols-4 gap-4 justify-items-center">
+                        <!-- Ice cream scoops will be generated here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="hidden p-8 text-center">
+            <h1 class="text-4xl md:text-6xl font-bold text-pink-500 handwriting">遊戲結束!</h1>
+            <p class="mt-6 text-xl text-gray-600">你的總收入係:</p>
+            <p id="final-score" class="text-5xl font-bold text-yellow-500 my-4">$0</p>
+            <button onclick="resetGame()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-transform transform hover:scale-105">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+        const iceCreamOptionsEl = document.getElementById('ice-cream-options');
+        const customerEl = document.getElementById('customer');
+        const finalScoreEl = document.getElementById('final-score');
+
+        // Game State
+        let score = 0;
+        let timer = 0;
+        let timerInterval;
+        const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+        const successNotes = ['C4', 'E4', 'G4'];
+        const customers = ['👨', '👩', '😥', '🤠', '👧', '👦', '🐷'];
+        
+        // Word Data
+        const p_words = [
+            { char: '鴨', emoji: '🦆' }, { char: '十', emoji: '🔟' }, { char: '貼', emoji: '💌' },
+            { char: '蝶', emoji: '🦋' }, { char: '碟', emoji: '🍽️' }, { char: '粒', emoji: '🍬' },
+            { char: '夾', emoji: '📎' }, { char: '合', emoji: '🙏' }, { char: '盒', emoji: '📦' },
+            { char: '插', emoji: '🔌' }, { char: '雜', emoji: '📚' }, { char: '塔', emoji: '🗼' },
+            { char: '鴿', emoji: '🕊️' }, { char: '狹', emoji: '↔️' }, { char: '烚', emoji: '🍳' },
+            { char: '甲', emoji: '🐞' }, { char: '集', emoji: '📺' }, { char: '及', emoji: '🔗' },
+            { char: '級', emoji: '📶' }, { char: '給', emoji: '🎁' }, { char: '喼', emoji: '🧳' },
+            { char: '入', emoji: '➡️' }
+        ];
+
+        const t_words = [
+            { char: '七', emoji: '7️⃣' }, { char: '鐵', emoji: '🚆' }, { char: '切', emoji: '🔪' },
+            { char: '八', emoji: '8️⃣' }, { char: '壓', emoji: '👇' }, { char: '跌', emoji: '🤸' },
+            { char: '抹', emoji: '🧼' }, { char: '襪', emoji: '🧦' }, { char: '滑', emoji: '🏂' },
+            { char: '挖', emoji: '⛏️' }, { char: '括', emoji: '()' }, { char: '卡', emoji: '💳' },
+            { char: '筆', emoji: '🖊️' }, { char: '一', emoji: '1️⃣' }, { char: '日', emoji: '☀️' },
+            { char: '蜜', emoji: '🐝' }, { char: '咳', emoji: '🤧' }, { char: '匹', emoji: '🐎' }
+        ];
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function createIceCreamElement(word, isCorrect) {
+            const colors = ['bg-pink-300', 'bg-blue-300', 'bg-green-300', 'bg-yellow-300', 'bg-purple-300', 'bg-orange-300'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            const iceCreamContainer = document.createElement('div');
+            iceCreamContainer.className = 'flex flex-col items-center cursor-pointer transform hover:scale-110 transition-transform';
+            iceCreamContainer.draggable = true;
+            iceCreamContainer.dataset.correct = isCorrect;
+
+            // More realistic scoop shape (semi-circle)
+            const scoopVisual = document.createElement('div');
+            scoopVisual.className = `w-24 h-20 md:w-28 md:h-24 ${randomColor} rounded-t-full flex flex-col items-center justify-center shadow-lg pt-4`;
+            scoopVisual.innerHTML = `<span class="text-5xl">${word.emoji}</span><span class="text-lg font-bold text-gray-800">${word.char}</span>`;
+
+            // Cone with waffle pattern details
+            const cone = document.createElement('div');
+            cone.className = 'w-24 h-24 md:w-28 md:h-28 cone-waffle';
+            
+            iceCreamContainer.appendChild(scoopVisual);
+            iceCreamContainer.appendChild(cone);
+            
+            iceCreamContainer.addEventListener('dragstart', handleDragStart);
+            
+            // --- NEW: Add touch event listeners for mobile ---
+            iceCreamContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+
+            return iceCreamContainer;
+        }
+
+        function populateIceCreams() {
+            iceCreamOptionsEl.innerHTML = '';
+            // Always pick 1 correct word and 3 distractor words
+            const correctWord = shuffle([...p_words]).slice(0, 1);
+            const distractorWords = shuffle([...t_words]).slice(0, 3);
+
+            const allWords = shuffle([
+                ...correctWord.map(w => ({ ...w, isCorrect: true })),
+                ...distractorWords.map(w => ({ ...w, isCorrect: false }))
+            ]);
+
+            allWords.forEach(word => {
+                const iceCreamEl = createIceCreamElement(word, word.isCorrect);
+                iceCreamOptionsEl.appendChild(iceCreamEl);
+            });
+        }
+
+        function startGame(duration) {
+            timer = duration;
+            score = 0;
+            scoreEl.textContent = score;
+            timerEl.textContent = timer;
+
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+
+            populateIceCreams();
+            customerEl.parentElement.classList.remove('shake-animation');
+            const initialCustomer = customers[Math.floor(Math.random() * customers.length)];
+            customerEl.firstElementChild.textContent = initialCustomer;
+            customerEl.parentElement.classList.add('customer-enter');
+
+            timerInterval = setInterval(() => {
+                timer--;
+                timerEl.textContent = timer;
+                if (timer <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            gameScreen.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            finalScoreEl.textContent = `$${score}`;
+        }
+        
+        function resetGame() {
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        }
+
+        // Drag and Drop handlers (for Mouse)
+        function handleDragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.dataset.correct);
+            e.target.classList.add('dragging');
+        }
+
+        customerEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            customerEl.classList.add('drag-over');
+        });
+
+        customerEl.addEventListener('dragleave', () => {
+            customerEl.classList.remove('drag-over');
+        });
+        
+        customerEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            customerEl.classList.remove('drag-over');
+            const isCorrect = e.dataTransfer.getData('text/plain') === 'true';
+            const draggedEl = document.querySelector('.dragging');
+            if (draggedEl) {
+                draggedEl.classList.remove('dragging');
+            }
+
+            if (isCorrect) {
+                handleCorrectAnswer(draggedEl);
+            } else {
+                handleWrongAnswer();
+            }
+        });
+
+        // --- NEW: Touch event handlers for Mobile ---
+        let touchDragElement = null;
+        let touchDragClone = null;
+        let startX = 0;
+        let startY = 0;
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            touchDragElement = e.currentTarget;
+            touchDragClone = touchDragElement.cloneNode(true);
+
+            // Style and position the clone
+            touchDragClone.style.position = 'absolute';
+            touchDragClone.style.zIndex = '1000';
+            touchDragClone.style.pointerEvents = 'none'; // So it doesn't interfere with drop target detection
+            touchDragClone.classList.add('dragging'); // Apply visual feedback
+            document.body.appendChild(touchDragClone);
+            
+            const touch = e.touches[0];
+            moveClone(touch.clientX, touch.clientY);
+
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd, { passive: false });
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!touchDragClone) return;
+            const touch = e.touches[0];
+            moveClone(touch.clientX, touch.clientY);
+
+            // Check if over drop zone
+            const elementUnder = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (elementUnder && (elementUnder === customerEl || customerEl.contains(elementUnder))) {
+                 customerEl.classList.add('drag-over');
+            } else {
+                 customerEl.classList.remove('drag-over');
+            }
+        }
+
+        function handleTouchEnd(e) {
+            if (!touchDragElement) return;
+            const touch = e.changedTouches[0];
+            const elementUnder = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            customerEl.classList.remove('drag-over');
+
+            // Check if dropped on the customer
+            if (elementUnder && (elementUnder === customerEl || customerEl.contains(elementUnder))) {
+                const isCorrect = touchDragElement.dataset.correct === 'true';
+                if (isCorrect) {
+                    handleCorrectAnswer(touchDragElement);
+                } else {
+                    handleWrongAnswer();
+                }
+            }
+            
+            // Cleanup
+            document.body.removeChild(touchDragClone);
+            touchDragElement = null;
+            touchDragClone = null;
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+        }
+        
+        function moveClone(x, y) {
+             if (!touchDragClone) return;
+             // Center the clone on the finger
+             touchDragClone.style.left = `${x - touchDragClone.offsetWidth / 2}px`;
+             touchDragClone.style.top = `${y - touchDragClone.offsetHeight / 2}px`;
+        }
+        
+        function handleCorrectAnswer(element) {
+            score += 10;
+            scoreEl.textContent = score;
+            synth.triggerAttackRelease(successNotes, '8n');
+            
+            customerEl.firstElementChild.textContent = '😄';
+            customerEl.classList.add('pop-animation');
+            
+            // Generate a new set of 4 ice creams for the next round
+            setTimeout(populateIceCreams, 300);
+
+            setTimeout(() => {
+                customerEl.classList.remove('pop-animation');
+                // New customer animation
+                customerEl.parentElement.classList.remove('customer-enter');
+                customerEl.parentElement.classList.add('customer-leave');
+                setTimeout(() => {
+                    const newCustomer = customers[Math.floor(Math.random() * customers.length)];
+                    customerEl.firstElementChild.textContent = newCustomer;
+                    customerEl.parentElement.classList.remove('customer-leave');
+                    customerEl.parentElement.classList.add('customer-enter');
+                }, 500);
+            }, 500);
+        }
+
+        function handleWrongAnswer() {
+            customerEl.firstElementChild.textContent = '😞';
+            customerEl.parentElement.classList.add('shake-animation');
+            
+            // Customer leaves
+            setTimeout(() => {
+                customerEl.parentElement.classList.remove('shake-animation');
+                customerEl.parentElement.classList.remove('customer-enter');
+                customerEl.parentElement.classList.add('customer-leave');
+                setTimeout(() => {
+                    const newCustomer = customers[Math.floor(Math.random() * customers.length)];
+                    customerEl.firstElementChild.textContent = newCustomer;
+                    customerEl.parentElement.classList.remove('customer-leave');
+                    customerEl.parentElement.classList.add('customer-enter');
+                }, 500);
+            }, 500);
+        }
+
+    </script>
+</body>
+</html>
+
+
